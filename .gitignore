@@ -1,0 +1,29 @@
+# Python
+pipeline/.venv/
+__pycache__/
+*.pyc
+
+# Generated data (rebuild with pipeline/build.py)
+data/
+web/data/
+web/public/data/
+
+# Web
+web/node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
+*.tsbuildinfo
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local screenshots / scratch

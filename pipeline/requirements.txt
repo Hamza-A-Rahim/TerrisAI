@@ -1,0 +1,10 @@
+rasterio>=1.4
+numpy>=2.0
+scipy>=1.13
+pyproj>=3.6
+shapely>=2.0
+matplotlib>=3.9
+pillow>=10.4
+pystac-client>=0.8
+planetary-computer>=1.0
+requests>=2.32

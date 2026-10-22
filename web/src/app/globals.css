@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0a0c0f;
+  --color-panel: #12151a;
+  --color-panel-2: #181c22;
+  --color-line: #232931;
+  --color-line-2: #2d3540;
+  --color-fg: #e7e9ec;
+  --color-muted: #8a939f;
+  --color-dim: #5d6672;
+  --color-accent: #f0a04b;
+  --color-cool: #5aa9e6;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--color-ink);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Glass panels floating over the map */
+.glass {
+  background: color-mix(in srgb, var(--color-panel) 88%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
+  border: 1px solid var(--color-line);
+}
+
+/* Range inputs */
+input[type="range"].slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 18px;
+  background: transparent;
+}
+input[type="range"].slider::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--color-line-2);
+  border-radius: 2px;
+}
+input[type="range"].slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--color-fg);
+  border: 2px solid var(--color-ink);
+  box-shadow: 0 0 0 1px var(--color-line-2);
+}
+input[type="range"].slider::-moz-range-track {
+  height: 2px;
+  background: var(--color-line-2);
+}
+input[type="range"].slider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-fg);
+  border: 2px solid var(--color-ink);
+}
+
+/* MapLibre chrome, toned to the UI */
+.maplibregl-ctrl-group {
+  background: color-mix(in srgb, var(--color-panel) 92%, transparent) !important;
+  border: 1px solid var(--color-line) !important;
+  box-shadow: none !important;
+}
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--color-line) !important;
+}
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(0.85);
+}
+.maplibregl-ctrl-attrib {
+  background: color-mix(in srgb, var(--color-ink) 70%, transparent) !important;
+  color: var(--color-muted) !important;
+  font-size: 10px !important;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--color-muted) !important;
+}
+.maplibregl-ctrl-attrib-button {
+  filter: invert(0.8);
+}
+.maplibregl-ctrl-scale {
+  background: transparent !important;
+  color: var(--color-muted) !important;
+  border-color: var(--color-muted) !important;
+  font-size: 10px !important;
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--color-line-2);
+  border-radius: 3px;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.6); opacity: 0.9; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+.marker-ring {
+  animation: pulse-ring 1.6s ease-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--color-panel-2) 0, var(--color-line) 60px, var(--color-panel-2) 120px);
+  background-size: 400px 100%;
+  animation: shimmer 1.4s linear infinite;
+}
