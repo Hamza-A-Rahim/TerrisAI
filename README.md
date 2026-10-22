@@ -31,7 +31,24 @@ docs/                methodology, data sources, roadmap
 
 ## Setup
 
-Requirements: Python 3.11+, Node 20+.
+Requirements: Node 20+. Python 3.11+ only if you rebuild the data.
+
+### Option A: download the pre-built data (fastest)
+
+The generated outputs (~660 MB) are published as a GitHub Release instead of being committed, because the data
+cubes exceed GitHub’s 100 MB file limit and every rebuild would bloat the history.
+
+```bash
+# from the repository root
+gh release download data-v1 --repo Hamza-A-Rahim/TerrisAI
+sha256sum -c lahore-data-v1.zip.sha256
+unzip lahore-data-v1.zip        # restores web/data/lahore and web/public/data/lahore
+rm lahore-data-v1.zip*
+
+cd web && npm install && npm run dev   # http://localhost:3000
+```
+
+### Option B: rebuild the data from Landsat
 
 ```bash
 # 1. Data pipeline (~15 min on first run; downloads are cached in data/cache)
@@ -48,7 +65,8 @@ npm run dev        # http://localhost:3000
 ```
 
 The pipeline writes `web/data/lahore/*.tif` (point-query cubes) and `web/public/data/lahore/`
-(overlays, `manifest.json`, `summary.json`). Generated data isn’t committed. Rebuild it with the commands above.
+(overlays, `manifest.json`, `summary.json`). Generated data isn’t committed: download it (Option A) or rebuild it (Option B).
+After a rebuild that changes results, publish a new release (`data-v2`, …) so the download stays in step with the code.
 
 No API keys are needed. See `.env.example` for the planned production storage settings.
 
