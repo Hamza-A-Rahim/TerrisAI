@@ -76,12 +76,15 @@ No API keys are needed.
 Production is a single Cloudflare Worker with static assets, which fits the Workers free plan:
 
 - `npm run build` runs `next build` (static export to `web/out`), then `scripts/stage-data.mjs`.
-  - That script splits the data cubes into 16 MiB chunks under `out/_cubes/` (static assets are limited to 25 MiB each).
+  - That script rewrites the data cubes as uncompressed 142-byte pixel records (every cube band plus land cover).
+  - The records are split into 57 chunks of 16 MiB under `out/_points/`, since static assets are limited to 25 MiB each.
 - The Worker ([web/worker/index.ts](web/worker/index.ts)) serves:
   - the pages;
   - `/data/<city>/` display files (overlays, manifest, summary) with cache headers;
-  - `/api/point`, which reassembles byte ranges from the cube chunks and reads one pixel of each cube.
-- `/_cubes/*` is never served publicly.
+  - `/api/point`, which reads one pixel as a single range request, with no decompression.
+- Avoiding decompression keeps each request within the free plan's 10 ms CPU limit; decoding GeoTIFF tiles exceeded it.
+- `/_points/*` is never served publicly.
+- Live: https://terris.terris-web.workers.dev
 
 ```bash
 cd web
@@ -110,8 +113,9 @@ and its uncertainty. To spot-check the point API against the source rasters:
 curl "http://localhost:3000/api/point?lon=74.3436&lat=31.5204"
 ```
 
-The Worker's point API (`npm run preview`, port 8787) was checked against `rasterio` reads of the source cubes
-at 25 random locations: 1,750 values, all equal.
+The deployed point API was checked against `rasterio` reads of the source cubes:
+- 60 random locations, 4,200 values, all equal;
+- the pixels on both sides of five chunk boundaries, with land cover, all equal.
 
 ## Docs
 

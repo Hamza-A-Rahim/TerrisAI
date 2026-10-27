@@ -1,11 +1,36 @@
-// Point query shared by the local dev route (reads files from disk) and the
-// Cloudflare Worker (reads the same COGs from R2). Only the way a GeoTIFF is
-// opened differs between the two.
+// Point query shared by the local dev route (reads the COG cubes from disk)
+// and the Cloudflare Worker (reads uncompressed pixel records, see
+// scripts/stage-data.mjs). Only the way one pixel is read differs.
 import type { GeoTIFF } from "geotiff";
 import type { Manifest, PointResult, PointValue } from "./types";
 
 export const CUBES = ["lst", "anom", "ndvi", "unc", "count"] as const;
 export type OpenTiff = (name: string) => Promise<GeoTIFF>;
+
+/** Raw values of one pixel: cubes[i] holds every band of CUBES[i]. */
+export interface PixelData {
+  cubes: number[][];
+  landcover: number | null;
+}
+export type ReadPixel = (row: number, col: number) => Promise<PixelData>;
+
+/** Reads one pixel from the Cloud-Optimized GeoTIFF cubes. */
+export function geotiffReader(open: OpenTiff): ReadPixel {
+  return async (row, col) => {
+    const window = [col, row, col + 1, row + 1];
+    const read = async (name: string) => {
+      const img = await (await open(name)).getImage();
+      return Array.from((await img.readRasters({ window, interleave: true })) as unknown as ArrayLike<number>);
+    };
+    const [cubes, landcover] = await Promise.all([
+      Promise.all(CUBES.map(read)),
+      read("landcover")
+        .then((v) => v[0])
+        .catch(() => null),
+    ]);
+    return { cubes, landcover };
+  };
+}
 
 const R = 6378137;
 const toMerc = (lon: number, lat: number) => [
@@ -30,7 +55,7 @@ export function parsePointParams(url: URL): { city: string; lon: number; lat: nu
   return { city, lon, lat };
 }
 
-export async function pointQuery(m: Manifest, open: OpenTiff, lon: number, lat: number): Promise<PointResponse> {
+export async function pointQuery(m: Manifest, readPixel: ReadPixel, lon: number, lat: number): Promise<PointResponse> {
   const [a, , c, , e, f] = m.grid.transform; // affine: x = c + a*col, y = f + e*row
   const [x, y] = toMerc(lon, lat);
   const col = Math.floor((x - c) / a);
@@ -39,18 +64,7 @@ export async function pointQuery(m: Manifest, open: OpenTiff, lon: number, lat: 
     return { status: 422, body: { error: "outside study area" } };
   }
 
-  const window = [col, row, col + 1, row + 1];
-  const read = async (name: string) => {
-    const img = await (await open(name)).getImage();
-    return Array.from((await img.readRasters({ window, interleave: true })) as unknown as ArrayLike<number>);
-  };
-
-  const [cubeVals, lc] = await Promise.all([
-    Promise.all(CUBES.map(read)),
-    read("landcover")
-      .then((v) => v[0])
-      .catch(() => null),
-  ]);
+  const { cubes: cubeVals, landcover: lc } = await readPixel(row, col);
 
   const values: Record<string, PointValue> = {};
   for (const [key, band] of Object.entries(m.bands)) {

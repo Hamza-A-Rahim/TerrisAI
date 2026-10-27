@@ -19,6 +19,6 @@
    own spatial contrast (e.g. built-up vs green space within the city).
 3. **Polygon drawing** with area statistics (server-side read of the COG window).
 4. **Deployment:** done. A Cloudflare Worker with static assets serves the app, data and point API (see README).
-   Move the cubes to R2 if more cities push the deployment past the static-asset file limits.
+   Move the pixel records to R2 if more cities push the deployment past the static-asset file limits.
 5. **Cross-checks:** MODIS MOD11A2/MYD11A2 day/night at 1 km; ECOSTRESS where available.
 6. **More cities:** add a `CityConfig`; check that it fits in one WRS-2 footprint.

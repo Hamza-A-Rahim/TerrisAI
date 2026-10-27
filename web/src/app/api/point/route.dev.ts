@@ -1,10 +1,10 @@
 // Local development only (picked up via pageExtensions in next.config.ts).
-// In production the Cloudflare Worker (worker/index.ts) serves /api/point from R2.
+// In production the Cloudflare Worker (worker/index.ts) serves /api/point from pixel records.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fromFile, type GeoTIFF } from "geotiff";
 import { NextResponse } from "next/server";
-import { parsePointParams, pointQuery } from "@/lib/pointCore";
+import { geotiffReader, parsePointParams, pointQuery } from "@/lib/pointCore";
 import type { Manifest } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -40,7 +40,7 @@ export async function GET(req: Request) {
   };
 
   try {
-    const r = await pointQuery(m, open, p.lon, p.lat);
+    const r = await pointQuery(m, geotiffReader(open), p.lon, p.lat);
     return NextResponse.json(r.body, { status: r.status, headers: { "Cache-Control": "public, max-age=3600" } });
   } catch (err) {
     console.error("point query failed", err);

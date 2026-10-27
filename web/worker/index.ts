@@ -3,93 +3,46 @@
 //
 // Everything ships as static assets (scripts/stage-data.mjs):
 //   /data/<city>/manifest.json, summary.json, overlays/*.webp   public
-//   /_cubes/<city>/index.json, <cube>.<nnn>.bin                 private
-// The Cloud-Optimized GeoTIFF cubes exceed the 25 MiB asset limit, so they
-// are split into fixed-size chunks; the Worker reassembles byte ranges and
-// never serves them to the public.
-import { BaseClient, BaseResponse, fromCustomClient, type GeoTIFF } from "geotiff";
-import { parsePointParams, pointQuery } from "../src/lib/pointCore";
+//   /_points/<city>/index.json, <nnn>.bin                       private
+// The .bin chunks hold one uncompressed fixed-size record per pixel, so a
+// point query is a single small range read with almost no CPU (Workers Free
+// can't afford to decompress GeoTIFF tiles per request).
+import { parsePointParams, pointQuery, type PixelData } from "../src/lib/pointCore";
 import type { Manifest } from "../src/lib/types";
 
 interface Env {
   ASSETS: Fetcher;
 }
 
-interface CubeIndex {
-  chunkSize: number;
-  sizes: Record<string, number>;
+interface PointIndex {
+  width: number;
+  height: number;
+  cubes: string[];
+  bands: number;
+  recordBytes: number;
+  perChunk: number;
 }
 
-/* ----------------------------------------------- chunked assets for geotiff */
-
-// geotiff's generated .d.ts mistypes these base classes (status: void,
-// synchronous getData), so extend them at runtime with neutral types.
-const ResponseBase = BaseResponse as unknown as new () => object;
-const ClientBase = BaseClient as unknown as new (url: string) => object;
-
-class RangeResponse extends ResponseBase {
-  constructor(
-    private readonly data: ArrayBuffer,
-    private readonly start: number,
-    private readonly total: number,
-  ) {
-    super();
-  }
-  get status() {
-    return 206;
-  }
-  getHeader(name: string) {
-    const n = name.toLowerCase();
-    if (n === "content-range") return `bytes ${this.start}-${this.start + this.data.byteLength - 1}/${this.total}`;
-    if (n === "content-type") return "image/tiff";
-    return undefined;
-  }
-  async getData() {
-    return this.data;
-  }
-}
-
-/** Answers geotiff's single-range requests from the chunk files of one cube. */
-class ChunkedClient extends ClientBase {
-  constructor(
-    private readonly env: Env,
-    private readonly base: string, // e.g. https://host/_cubes/lahore/lst
-    private readonly total: number,
-    private readonly chunkSize: number,
-  ) {
-    super(base);
-  }
-
-  async request({ headers }: { headers?: HeadersInit } = {}) {
-    const m = /bytes=(\d+)-(\d+)/.exec(new Headers(headers).get("range") ?? "");
-    if (!m) throw new Error("only ranged reads are supported");
-    const start = Number(m[1]);
-    const end = Math.min(Number(m[2]), this.total - 1);
-    const parts: Uint8Array[] = [];
-    for (let c = Math.floor(start / this.chunkSize); c <= Math.floor(end / this.chunkSize); c++) {
-      const s = Math.max(start, c * this.chunkSize) - c * this.chunkSize;
-      const e = Math.min(end, (c + 1) * this.chunkSize - 1) - c * this.chunkSize;
-      const r = await this.env.ASSETS.fetch(`${this.base}.${String(c).padStart(3, "0")}.bin`, {
-        headers: { range: `bytes=${s}-${e}` },
-      });
-      if (!r.ok) throw new Error(`chunk ${c} of ${this.base}: HTTP ${r.status}`);
-      const buf = await r.arrayBuffer();
-      // Fall back to slicing if the range header was not honoured
-      parts.push(new Uint8Array(r.status === 206 ? buf : buf.slice(s, e + 1)));
-    }
-    const out = new Uint8Array(parts.reduce((n, p) => n + p.byteLength, 0));
-    let o = 0;
-    for (const p of parts) {
-      out.set(p, o);
-      o += p.byteLength;
-    }
-    return new RangeResponse(out.buffer, start, this.total);
-  }
+async function readRecord(env: Env, base: string, idx: PointIndex, row: number, col: number): Promise<PixelData> {
+  const p = row * idx.width + col;
+  const chunk = Math.floor(p / idx.perChunk);
+  const start = (p % idx.perChunk) * idx.recordBytes;
+  const r = await env.ASSETS.fetch(`${base}/${String(chunk).padStart(3, "0")}.bin`, {
+    headers: { range: `bytes=${start}-${start + idx.recordBytes - 1}` },
+  });
+  if (!r.ok) throw new Error(`chunk ${chunk}: HTTP ${r.status}`);
+  let buf = await r.arrayBuffer();
+  // Fall back to slicing if the range header was not honoured
+  if (r.status !== 206) buf = buf.slice(start, start + idx.recordBytes);
+  if (buf.byteLength !== idx.recordBytes) throw new Error(`short record (${buf.byteLength} B)`);
+  const v = new DataView(buf);
+  const at = (i: number) => v.getInt16(i * 2, true);
+  const cubes = idx.cubes.map((_, c) => Array.from({ length: idx.bands }, (_, b) => at(c * idx.bands + b)));
+  return { cubes, landcover: at(idx.cubes.length * idx.bands) };
 }
 
 /* -------------------------------- per-isolate caches (assets are immutable) */
 
-const tiffs = new Map<string, Promise<GeoTIFF>>();
 const jsons = new Map<string, Promise<unknown>>();
 
 function assetJson<T>(env: Env, url: string): Promise<T | null> {
@@ -116,26 +69,13 @@ async function handlePoint(req: Request, env: Env): Promise<Response> {
   if (!p) return json({ error: "bad request" }, 400);
   const [m, idx] = await Promise.all([
     assetJson<Manifest>(env, `${url.origin}/data/${p.city}/manifest.json`),
-    assetJson<CubeIndex>(env, `${url.origin}/_cubes/${p.city}/index.json`),
+    assetJson<PointIndex>(env, `${url.origin}/_points/${p.city}/index.json`),
   ]);
   if (!m || !idx) return json({ error: "city data not published" }, 404);
-
-  const open = (name: string) => {
-    const key = `${p.city}/${name}`;
-    let t = tiffs.get(key);
-    if (!t) {
-      const size = idx.sizes[name];
-      if (size === undefined) return Promise.reject(new Error(`missing cube ${key}`));
-      const client = new ChunkedClient(env, `${url.origin}/_cubes/${key}`, size, idx.chunkSize);
-      t = fromCustomClient(client as unknown as BaseClient, { allowFullFile: false });
-      t.catch(() => tiffs.delete(key));
-      tiffs.set(key, t);
-    }
-    return t;
-  };
+  const base = `${url.origin}/_points/${p.city}`;
 
   try {
-    const r = await pointQuery(m, open, p.lon, p.lat);
+    const r = await pointQuery(m, (row, col) => readRecord(env, base, idx, row, col), p.lon, p.lat);
     return json(r.body, r.status, r.status === 200 ? "public, max-age=3600" : "no-store");
   } catch (err) {
     console.error("point query failed", err);
@@ -164,7 +104,7 @@ export default {
     if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method not allowed", { status: 405 });
     if (pathname === "/api/point") return handlePoint(req, env);
     if (pathname.startsWith("/data/")) return handleData(req, env, pathname);
-    if (pathname.startsWith("/_cubes/")) return new Response("Not found", { status: 404 });
+    if (pathname.startsWith("/_points/")) return new Response("Not found", { status: 404 });
     return env.ASSETS.fetch(req);
   },
 } satisfies ExportedHandler<Env>;
