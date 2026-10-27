@@ -25,7 +25,8 @@ pipeline/            Python data pipeline (Landsat → composites → COGs, over
   uhi/config.py      every scientific parameter, one block per city
   build.py           entry point
 web/                 Next.js app (TypeScript, Tailwind, MapLibre, ECharts)
-  src/app/api/point  point query against the COG cubes
+  src/lib/pointCore  point query against the COG cubes (shared by dev route and Worker)
+  worker/            Cloudflare Worker for production hosting
 docs/                methodology, data sources, roadmap
 ```
 
@@ -68,7 +69,29 @@ The pipeline writes `web/data/lahore/*.tif` (point-query cubes) and `web/public/
 (overlays, `manifest.json`, `summary.json`). Generated data isn’t committed: download it (Option A) or rebuild it (Option B).
 After a rebuild that changes results, publish a new release (`data-v2`, …) so the download stays in step with the code.
 
-No API keys are needed. See `.env.example` for the planned production storage settings.
+No API keys are needed.
+
+## Hosting (Cloudflare Workers)
+
+Production is a single Cloudflare Worker with static assets, which fits the Workers free plan:
+
+- `npm run build` runs `next build` (static export to `web/out`), then `scripts/stage-data.mjs`.
+  - That script splits the data cubes into 16 MiB chunks under `out/_cubes/` (static assets are limited to 25 MiB each).
+- The Worker ([web/worker/index.ts](web/worker/index.ts)) serves:
+  - the pages;
+  - `/data/<city>/` display files (overlays, manifest, summary) with cache headers;
+  - `/api/point`, which reassembles byte ranges from the cube chunks and reads one pixel of each cube.
+- `/_cubes/*` is never served publicly.
+
+```bash
+cd web
+npx wrangler login     # once
+npm run preview        # build + local Worker at http://localhost:8787
+npm run deploy         # build + deploy to <name>.<subdomain>.workers.dev
+```
+
+The data must be present locally (Option A or B) before building. Assets are content-hashed, so redeploys upload
+only changed files.
 
 ## Testing
 
@@ -86,6 +109,9 @@ and its uncertainty. To spot-check the point API against the source rasters:
 ```bash
 curl "http://localhost:3000/api/point?lon=74.3436&lat=31.5204"
 ```
+
+The Worker's point API (`npm run preview`, port 8787) was checked against `rasterio` reads of the source cubes
+at 25 random locations: 1,750 values, all equal.
 
 ## Docs
 
