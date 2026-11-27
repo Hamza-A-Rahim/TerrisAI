@@ -5,6 +5,8 @@ Lahore, Pakistan, from 2014 to 2025, using Landsat 8/9 Collection 2 Level-2 obse
 
 > Independent research prototype. Not affiliated with or endorsed by NASA, USGS or ESA.
 
+**Live demo:** https://terris.terris-web.workers.dev
+
 ## What it does
 
 - **Map:** full-screen MapLibre map with real Landsat-derived layers: surface temperature (°C), temperature
@@ -84,7 +86,6 @@ Production is a single Cloudflare Worker with static assets, which fits the Work
   - `/api/point`, which reads one pixel as a single range request, with no decompression.
 - Avoiding decompression keeps each request within the free plan's 10 ms CPU limit; decoding GeoTIFF tiles exceeded it.
 - `/_points/*` is never served publicly.
-- Live: https://terris.terris-web.workers.dev
 
 ```bash
 cd web
@@ -106,16 +107,15 @@ cd pipeline && .venv/Scripts/python -m unittest discover -s tests
 cd web && npm run typecheck && npm run build
 ```
 
-Data checks: the Analysis → *Data quality* table lists every candidate scene, why it was accepted or rejected,
-and its uncertainty. To spot-check the point API against the source rasters:
+The Analysis → *Data quality* table lists every candidate scene, why it was accepted or rejected, and its
+uncertainty. To query a single pixel:
 
 ```bash
 curl "http://localhost:3000/api/point?lon=74.3436&lat=31.5204"
 ```
 
-The deployed point API was checked against `rasterio` reads of the source cubes:
-- 60 random locations, 4,200 values, all equal;
-- the pixels on both sides of five chunk boundaries, with land cover, all equal.
+The deployed point API has been validated against direct `rasterio` reads of the source cubes: 4,200 values at
+60 random locations, plus pixels on both sides of every tested chunk boundary, all identical.
 
 ## Docs
 

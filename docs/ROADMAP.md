@@ -9,6 +9,7 @@
 - Analysis: city trend with sensitivity checks, scene-level rural-dependence diagnostic, NDVI trends,
   NDVI–LST scatter, distributions, neighbourhood tests, data-quality log
 - Methodology and data-source docs
+- Deployment: a Cloudflare Worker with static assets serves the app, data and point API (see README)
 
 ## Next
 
@@ -18,7 +19,6 @@
 2. **A reference that doesn’t depend on the crop calendar:** condition on rural NDVI, or use the urban core’s
    own spatial contrast (e.g. built-up vs green space within the city).
 3. **Polygon drawing** with area statistics (server-side read of the COG window).
-4. **Deployment:** done. A Cloudflare Worker with static assets serves the app, data and point API (see README).
-   Move the pixel records to R2 if more cities push the deployment past the static-asset file limits.
-5. **Cross-checks:** MODIS MOD11A2/MYD11A2 day/night at 1 km; ECOSTRESS where available.
-6. **More cities:** add a `CityConfig`; check that it fits in one WRS-2 footprint.
+4. **Cross-checks:** MODIS MOD11A2/MYD11A2 day/night at 1 km; ECOSTRESS where available.
+5. **More cities:** add a `CityConfig`; check that it fits in one WRS-2 footprint. Move the pixel records to
+   R2 if more cities push the deployment past the static-asset file limits.
